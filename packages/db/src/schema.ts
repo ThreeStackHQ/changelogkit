@@ -1,4 +1,4 @@
-import { pgTable, text, uuid, timestamp, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, uuid, timestamp, boolean, unique } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 
 export const users = pgTable("users", {
@@ -41,15 +41,50 @@ export const subscriptions = pgTable("subscriptions", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export const emailSubscribers = pgTable("email_subscribers", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  projectId: uuid("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  email: text("email").notNull(),
+  name: text("name"),
+  isConfirmed: boolean("is_confirmed").notNull().default(false),
+  confirmToken: text("confirm_token").notNull(),
+  unsubscribeToken: text("unsubscribe_token").notNull(),
+  confirmedAt: timestamp("confirmed_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  uniqueEmailPerProject: unique().on(table.projectId, table.email),
+}));
+
+export const emailSends = pgTable("email_sends", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  entryId: uuid("entry_id").notNull().references(() => entries.id, { onDelete: "cascade" }),
+  projectId: uuid("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  subscriberEmail: text("subscriber_email").notNull(),
+  status: text("status").notNull().default("sent"), // sent, failed, bounced
+  sentAt: timestamp("sent_at").defaultNow().notNull(),
+});
+
 export const projectsRelations = relations(projects, ({ one, many }) => ({
   user: one(users, { fields: [projects.userId], references: [users.id] }),
   entries: many(entries),
+  subscribers: many(emailSubscribers),
 }));
-export const entriesRelations = relations(entries, ({ one }) => ({
+export const entriesRelations = relations(entries, ({ one, many }) => ({
   project: one(projects, { fields: [entries.projectId], references: [projects.id] }),
+  emailSends: many(emailSends),
+}));
+export const emailSubscribersRelations = relations(emailSubscribers, ({ one }) => ({
+  project: one(projects, { fields: [emailSubscribers.projectId], references: [projects.id] }),
+}));
+export const emailSendsRelations = relations(emailSends, ({ one }) => ({
+  entry: one(entries, { fields: [emailSends.entryId], references: [entries.id] }),
+  project: one(projects, { fields: [emailSends.projectId], references: [projects.id] }),
 }));
 
 export type User = typeof users.$inferSelect;
 export type Project = typeof projects.$inferSelect;
 export type Entry = typeof entries.$inferSelect;
 export type NewEntry = typeof entries.$inferInsert;
+export type EmailSubscriber = typeof emailSubscribers.$inferSelect;
+export type NewEmailSubscriber = typeof emailSubscribers.$inferInsert;
+export type EmailSend = typeof emailSends.$inferSelect;
